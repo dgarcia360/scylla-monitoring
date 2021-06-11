@@ -23,6 +23,8 @@ Prerequisites
 * If you have Prometheus or Grafana installed, confirm that your version is supported by the Scylla Monitoring Stack version you want to install. Refer to the table below.
 .. _`docker`: https://docs.docker.com/install/
 
+.. _Scylla_Monitoring_Stack_Compatibility_Matrix:
+
 .. list-table:: Scylla Monitoring Stack Compatibility Matrix
    :widths: 33 33 33
    :header-rows: 1
