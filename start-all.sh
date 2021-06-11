@@ -1,6 +1,29 @@
 #!/usr/bin/env bash
 
-CURRENT_VERSION=`cat CURRENT_VERSION.sh`
+CURRENT_VERSION="master"
+if [ -f CURRENT_VERSION.sh ]; then
+    CURRENT_VERSION=`cat CURRENT_VERSION.sh`
+fi
+
+. versions.sh
+
+if [ "$1" = "-e" ]; then
+    DEFAULT_VERSION=${DEFAULT_ENTERPRISE_VERSION[$BRANCH_VERSION]}
+fi
+BRANCH_VERSION=$CURRENT_VERSION
+if [ -z ${DEFAULT_VERSION[$CURRENT_VERSION]} ]; then
+    BRANCH_VERSION=`echo $CURRENT_VERSION|cut -d'.' -f1,2`
+fi
+
+MANAGER_VERSION=${MANAGER_DEFAULT_VERSION[$BRANCH_VERSION]}
+
+if [ "$1" = "--version" ]; then
+    echo "Scylla-Monitoring Stack version: $CURRENT_VERSION"
+    echo "Supported versions:" ${SUPPORTED_VERSIONS[$BRANCH_VERSION]}
+    echo "Manager supported versions:" ${MANAGER_SUPPORTED_VERSIONS[$BRANCH_VERSION]}
+    exit
+fi
+
 if [ "$CURRENT_VERSION" = "master" ]; then
     echo ""
     echo "*****************************************************"
@@ -8,18 +31,11 @@ if [ "$CURRENT_VERSION" = "master" ]; then
     echo "* Check the README.md file for the stable releases  *"
     echo "*****************************************************"
     echo ""
+    echo "Make sure you run generate-dashboards.sh to generate your dashboards."
+    echo 'For example to use Scylla 2021.1 run `./generate-dashboards.sh -F -v 2021.1`'
+    echo ""
 fi
 
-if [ "$1" = "--version" ]; then
-    cat CURRENT_VERSION.sh
-    exit
-fi
-
-if [ "$1" = "-e" ]; then
-. enterprise_versions.sh
-else		
-. versions.sh
-fi
 if [ "`id -u`" -eq 0 ]; then
     echo "Running as root is not advised, please check the documentation on how to run as non-root user"
 else
@@ -33,11 +49,49 @@ if [ ! -z "$is_podman" ]; then
     group_args+=(--userns=keep-id)
 fi
 
+function usage {
+  __usage="Usage: $(basename $0) [-h] [--version] [-e] [-d Prometheus data-dir] [-L resolve the servers from the manger running on the given address] [-G path to grafana data-dir] [-s scylla-target-file] [-n node-target-file] [-l] [-v comma separated versions] [-j additional dashboard to load to Grafana, multiple params are supported] [-c grafana environment variable, multiple params are supported] [-b Prometheus command line options] [-g grafana port ] [ -p prometheus port ] [-a admin password] [-m alertmanager port] [ -M scylla-manager version ] [-D encapsulate docker param] [-r alert-manager-config] [-R prometheus-alert-file] [-N manager target file] [-A bind-to-ip-address] [-C alertmanager commands] [-Q Grafana anonymous role (Admin/Editor/Viewer)] [-S start with a system specific dashboard set] [-T additional-prometheus-targets] [--no-loki] [--auto-restart] [--no-renderer]
 
-PROMETHEUS_RULES="$PWD/prometheus/prometheus.rules.yml"
+Options:
+  -h print this help and exit
+  --version print the current monitoring version and the supported versions and exit.
+  -e
+  -d path/to/Prometheus/data/dir - Set an external data directory for the Prometheus data
+  -L ip                          - Resolve the servers from a Scylla Manager running on the given address.
+  -G path/to/Grafana/data-dir    - Set an external data directory for the Grafana data.
+  -s path/to/scylla-target-file  - Read Scylla's target from the given file.
+  -n path/to/node-target-file    - Override scylla target file for node_exporter.
+  -l                             - If Set use the local host network, especially useful when a container needs
+                                   to access the local host.
+  -v comma separated versions    - Specify one or more Scylla versions, check --version for the supported versions.
+  -j additional dashboard        - List additional dashboards to load to Grafana, multiple params are supported.
+  -c grafana_environment         - Grafana environment variable, multiple params are supported.
+  -b Prometheus command          - Prometheus command line options.
+  -g grafana port                - Override the default Grafana port.
+  -p prometheus port             - Override the default Prometheus port.
+  -a admin password              - Set Grafna's Admin password.
+  -m alertmanager port           - Override the default Prometheus port.
+  -M scylla-manager version      - Override the default Scylla Manager version to use.
+  -D docker param                - Encapsulate docker param, the parameter will be used by all containers.
+  -r alert-manager-config        - Override the default alert-manager configuration file.
+  -R prometheus-alert-file       - Override the default Prometheus alerts configuration file.
+  -N path/to/manager/target file - Set the location of the target file for Scylla Manager.
+  -A bind-to-ip-address          - Bind to a specific interface.
+  -C alertmanager commands       - Pass the command to the alertmanager.
+  -Q Grafana anonymous role      - Set the Grafana anonymous role to one of Admin/Editor/Viewer.
+  -S dashbards-list              - Override the default set of dashboards with the spcefied one.
+  -T path/to/prometheus-targets  - Adds additional Prometheus target files.
+  --no-loki                      - If set, do not run Loki and promtail.
+  --auto-restart                 - If set, auto restarts the containers on failure.
+  --no-renderer                  - If set, do not run the Grafana renderer container.
+
+The script starts Scylla Monitoring stack.
+"
+  echo "$__usage"
+}
+PROMETHEUS_RULES="$PWD/prometheus/prom_rules/"
+PROMETHEUS_RULES="$PWD/prometheus/prom_rules/:/etc/prometheus/prom_rules/"
 VERSIONS=$DEFAULT_VERSION
-usage="$(basename "$0") [-h] [--version] [-e] [-d Prometheus data-dir] [-L resolve the servers from the manger running on the given address] [-G path to grafana data-dir] [-s scylla-target-file] [-n node-target-file] [-l] [-v comma separated versions] [-j additional dashboard to load to Grafana, multiple params are supported] [-c grafana environment variable, multiple params are supported] [-b Prometheus command line options] [-g grafana port ] [ -p prometheus port ] [-a admin password] [-m alertmanager port] [ -M scylla-manager version ] [-D encapsulate docker param] [-r alert-manager-config] [-R prometheus-alert-file] [-N manager target file] [-A bind-to-ip-address] [-C alertmanager commands] [-Q Grafana anonymous role (Admin/Editor/Viewer)] [-S start with a system specific dashboard set] [-T additional-prometheus-targets] [--no-loki] [--auto-restart] [--no-renderer] -- starts Grafana and Prometheus Docker instances"
-PROMETHEUS_VERSION=v2.25.2
 
 SCYLLA_TARGET_FILES=($PWD/prometheus/scylla_servers.yml $PWD/scylla_servers.yml)
 SCYLLA_MANGER_TARGET_FILES=($PWD/prometheus/scylla_manager_servers.yml $PWD/scylla_manager_servers.yml $PWD/prometheus/scylla_manager_servers.example.yml)
@@ -45,6 +99,7 @@ GRAFANA_ADMIN_PASSWORD=""
 ALERTMANAGER_PORT=""
 DOCKER_PARAM=""
 DATA_DIR=""
+DATA_DIR_CMD=""
 CONSUL_ADDRESS=""
 PROMETHEUS_TARGETS=""
 BIND_ADDRESS=""
@@ -54,13 +109,15 @@ SPECIFIC_SOLUTION=""
 LDAP_FILE=""
 RUN_RENDERER="-E"
 RUN_LOKI=1
-
+RUN_THANOS_SC=1
 for arg; do
 	shift
 	case $arg in
         (--no-loki) RUN_LOKI=0
             ;;
         (--no-renderer) RUN_RENDERER=""
+            ;;
+        (--no-thanos-sc) RUN_THANOS_SC=0
             ;;
         (--auto-restart) DOCKER_PARAM="--restart=on-failure"
             ;;
@@ -71,7 +128,7 @@ done
 
 while getopts ':hleEd:g:p:v:s:n:a:c:j:b:m:r:R:M:G:D:L:N:C:Q:A:P:S:T:' option; do
   case "$option" in
-    h) echo "$usage"
+    h) usage
        exit
        ;;
     v) VERSIONS=$OPTARG
@@ -87,7 +144,11 @@ while getopts ':hleEd:g:p:v:s:n:a:c:j:b:m:r:R:M:G:D:L:N:C:Q:A:P:S:T:' option; do
        ;;
     r) ALERT_MANAGER_RULE_CONFIG="-r $OPTARG"
        ;;
-    R) PROMETHEUS_RULES=`readlink -m $OPTARG`
+    R) if [[ -d "$OPTARG" ]]; then
+        PROMETHEUS_RULES=`readlink -m $OPTARG`":/etc/prometheus/prom_rules/"
+       else
+        PROMETHEUS_RULES=`readlink -m $OPTARG`":/etc/prometheus/prometheus.rules.yml"
+       fi
        ;;
     g) GRAFANA_PORT="-g $OPTARG"
        ;;
@@ -139,7 +200,6 @@ while getopts ':hleEd:g:p:v:s:n:a:c:j:b:m:r:R:M:G:D:L:N:C:Q:A:P:S:T:' option; do
 done
 
 if [ -z "$CONSUL_ADDRESS" ]; then
-
     for f in ${SCYLLA_TARGET_FILES[@]}; do
         if [ -f $f ]; then
             SCYLLA_TARGET_FILE=$f
@@ -180,6 +240,20 @@ else
     SCYLLA_TARGET_FILE=""
     SCYLLA_MANGER_TARGET_FILE=""
     NODE_TARGET_FILE=""
+fi
+
+if [ -z $DATA_DIR ]
+then
+    USER_PERMISSIONS=""
+    echo "Warning: without an external Prometheus directory, Prometheus data will be deleted on shutdown, use the -d command line flag for data persistence."
+else
+    if [ -d $DATA_DIR ]; then
+        echo "Loading prometheus data from $DATA_DIR"
+    else
+        echo "Creating data directory $DATA_DIR"
+        mkdir -p $DATA_DIR
+    fi
+    DATA_DIR_CMD="-v "$(readlink -m $DATA_DIR)":/prometheus/data:Z"
 fi
 
 if [[ $DOCKER_PARAM = *"--net=host"* ]]; then
@@ -242,28 +316,15 @@ if [ -z $HOST_NETWORK ]; then
     PORT_MAPPING="-p $BIND_ADDRESS$PROMETHEUS_PORT:9090"
 fi
 
-if [ -z $DATA_DIR ]
-then
-    USER_PERMISSIONS=""
-else
-    if [ -d $DATA_DIR ]; then
-        echo "Loading prometheus data from $DATA_DIR"
-    else
-        echo "Creating data directory $DATA_DIR"
-        mkdir -p $DATA_DIR
-    fi
-    DATA_DIR="-v "$(readlink -m $DATA_DIR)":/prometheus/data:Z"
-fi
-
 docker run -d $DOCKER_PARAM $USER_PERMISSIONS \
-     $DATA_DIR \
+     $DATA_DIR_CMD \
      "${group_args[@]}" \
      -v $PWD/prometheus/build/prometheus.yml:/etc/prometheus/prometheus.yml:Z \
-     -v $PROMETHEUS_RULES:/etc/prometheus/prometheus.rules.yml:Z \
+     -v $PROMETHEUS_RULES:z \
      $SCYLLA_TARGET_FILE \
      $SCYLLA_MANGER_TARGET_FILE \
      $NODE_TARGET_FILE \
-     $PORT_MAPPING --name $PROMETHEUS_NAME prom/prometheus:$PROMETHEUS_VERSION  --config.file=/etc/prometheus/prometheus.yml $PROMETHEUS_COMMAND_LINE_OPTIONS >& /dev/null
+     $PORT_MAPPING --name $PROMETHEUS_NAME prom/prometheus:$PROMETHEUS_VERSION  --web.enable-lifecycle --config.file=/etc/prometheus/prometheus.yml $PROMETHEUS_COMMAND_LINE_OPTIONS
 
 if [ $? -ne 0 ]; then
     echo "Error: Prometheus container failed to start"
@@ -301,9 +362,18 @@ fi
 # Can't use localhost here, because the monitoring may be running remotely.
 # Also note that the port to which we need to connect is 9090, regardless of which port we bind to at localhost.
 DB_ADDRESS="$(docker inspect --format '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' $PROMETHEUS_NAME):9090"
+
 if [ ! -z "$is_podman" ] && [ "$DB_ADDRESS" = ":9090" ]; then
     HOST_IP=`hostname -I | awk '{print $1}'`
     DB_ADDRESS="$HOST_IP:9090"
+fi
+
+if [ $RUN_THANOS_SC -eq 1 ]; then
+    if [ -z $DATA_DIR ]; then
+        echo "You must use external prometheus directory to use the thanos side cart"
+    else
+        ./start-thanos-sc.sh -d $DATA_DIR -a $DB_ADDRESS
+    fi
 fi
 
 for val in "${GRAFANA_ENV_ARRAY[@]}"; do

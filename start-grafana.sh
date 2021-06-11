@@ -1,13 +1,20 @@
 #!/usr/bin/env bash
+CURRENT_VERSION="master"
+if [ -f CURRENT_VERSION.sh ]; then
+    CURRENT_VERSION=`cat CURRENT_VERSION.sh`
+fi
+
+. versions.sh
+. UA.sh
+BRANCH_VERSION=$CURRENT_VERSION
+if [ -z ${DEFAULT_VERSION[$CURRENT_VERSION]} ]; then
+    BRANCH_VERSION=`echo $CURRENT_VERSION|cut -d'.' -f1,2`
+fi
 
 if [ "$1" = "-e" ]; then
-. enterprise_versions.sh
-else
-. versions.sh
+    DEFAULT_VERSION=${DEFAULT_ENTERPRISE_VERSION[$BRANCH_VERSION]}
 fi
-VERSIONS=$DEFAULT_VERSION
-
-GRAFANA_VERSION=7.4.0
+MANAGER_VERSION=${MANAGER_DEFAULT_VERSION[$BRANCH_VERSION]}
 LOCAL=""
 GRAFANA_ADMIN_PASSWORD="admin"
 GRAFANA_AUTH=false
@@ -160,7 +167,9 @@ docker run -d $DOCKER_PARAM -i $USER_PERMISSIONS $PORT_MAPPING \
      -v $PWD/grafana/provisioning:/var/lib/grafana/provisioning:z $EXTERNAL_VOLUME \
      -e "GF_PATHS_PROVISIONING=/var/lib/grafana/provisioning" \
      -e "GF_SECURITY_ADMIN_PASSWORD=$GRAFANA_ADMIN_PASSWORD" \
+     -e "GF_ANALYTICS_GOOGLE_ANALYTICS_UA_ID=$UA_ANALTYICS" \
      -e "GF_PLUGINS_ALLOW_LOADING_UNSIGNED_PLUGINS=scylladb-scylla-datasource" \
+     -e "GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH=/var/lib/grafana/dashboards/ver_$VERSION/scylla-overview.$VERSION.json" \
      $GRAFANA_ENV_COMMAND \
      "${proxy_args[@]}" \
      --name $GRAFANA_NAME grafana/grafana:$GRAFANA_VERSION >& /dev/null
